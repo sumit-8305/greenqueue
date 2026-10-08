@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GreenQueue</title>
+<style>
+  :root{--bg:#0f1a14;--card:#16251c;--ink:#e8f3ec;--mut:#8fa99a;--ok:#4ade80;--bad:#f87171;--warn:#fbbf24;--line:#254033}
+  *{box-sizing:border-box}
+  body{margin:0 auto;max-width:980px;padding:16px;font:15px system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  h1{margin:0 0 4px;font-size:22px} .sub{color:var(--mut);margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .stat{flex:1;min-width:150px} .stat b{display:block;font-size:24px} .stat span{color:var(--mut);font-size:12px}
+  input,button{font:inherit;border-radius:8px;border:1px solid var(--line);padding:8px 10px;background:#0c1510;color:var(--ink)}
+  input{width:110px} #api{width:100%}
+  button{cursor:pointer;background:#1d3a2a} button:hover{background:#265038}
+  .dirty{background:#4a1f1f} .clean{background:#1f4a2c}
+  table{width:100%;border-collapse:collapse;font-size:13px} th,td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:left}
+  th{color:var(--mut);font-weight:500} .wrap{overflow-x:auto}
+  .tag{padding:2px 8px;border-radius:99px;font-size:12px}
+  .PENDING{background:#4a3b12;color:var(--warn)} .QUEUED{background:#1f3550;color:#7cb7ff}
+  .RUNNING{background:#3b2a50;color:#c4a2ff} .DONE{background:#1f4a2c;color:var(--ok)} .FAILED{background:#4a1f1f;color:var(--bad)}
+</style>
+</head>
+<body>
+<h1>GreenQueue</h1>
+<div class="sub">Carbon-aware job scheduling. Jobs run when the grid is cleaner, or when the deadline forces them.</div>
+
+<div class="card">
+  <input id="api" placeholder="Paste API URL (terraform output -raw api_url)">
+</div>
+
+<div class="card row">
+  <div class="stat"><b id="intensity">-</b><span>grid intensity now (gCO₂/kWh)</span></div>
+  <div class="stat"><b id="mode">-</b><span>grid mode</span></div>
+  <div class="stat"><b id="avoided">0</b><span>CO₂ avoided (g, estimated)</span></div>
+  <div class="stat"><b id="counts">-</b><span>jobs: pending / running / done</span></div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <b>Simulate grid:</b>
+    <button class="dirty" onclick="setGrid(800)">Dirty (800)</button>
+    <button class="clean" onclick="setGrid(300)">Clean (300)</button>
+    <button onclick="setGrid(null)">Auto</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <b>New jobs:</b>
+    <label>deadline (min) <input id="deadline" type="number" value="720"></label>
+    <label>duration (min) <input id="duration" type="number" value="1"></label>
+    <label>count <input id="count" type="number" value="3"></label>
+    <button onclick="submitJobs()">Submit</button>
+  </div>
+  <div id="msg" class="sub" style="margin:8px 0 0"></div>
+</div>
+
+<div class="card wrap">
+  <table>
+    <thead><tr><th>Job</th><th>Status</th><th>Submitted at (gCO₂/kWh)</th><th>Released at</th><th>Reason</th><th>Actual g</th><th>Run-now g</th><th>Saved g</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let API = localStorage.getItem('gq_api') || '';
+$('api').value = API;
+$('api').onchange = e => {
+  API = e.target.value.trim();
+  if (API && !API.endsWith('/')) API += '/';
+  localStorage.setItem('gq_api', API);
+  refresh();
+};
+
+async function call(path, method = 'GET', body) {
+  const opts = { method };
+  if (method !== 'GET') { opts.headers = { 'content-type': 'application/json' }; opts.body = JSON.stringify(body); }
+  const r = await fetch(API + path, opts);
+  return r.json();
+}
+
+const setGrid = v => call('override', 'POST', { intensity: v }).then(refresh);
+
+async function submitJobs() {
+  const n = +$('count').value || 1;
+  $('msg').textContent = 'Submitting...';
+  try {
+    for (let i = 0; i < n; i++)
+      await call('jobs', 'POST', { workload: 'cpu-burn', deadline_minutes: +$('deadline').value, duration_minutes: +$('duration').value });
+    $('msg').textContent = n + ' job(s) submitted.';
+    refresh();
+  } catch (e) { $('msg').textContent = 'Error: ' + e.message; }
+}
+
+const g = x => (x == null ? '-' : (+x).toFixed(4));
+
+async function refresh() {
+  if (!API) return;
+  try {
+    const [jobs, grid] = await Promise.all([call('jobs'), call('grid')]);
+    const override = grid.find(r => r.hour === 'OVERRIDE');
+    const hourKey = new Date().toISOString().slice(0, 13) + ':00Z';
+    const now = override || grid.find(r => r.hour === hourKey);
+    $('intensity').textContent = now ? Math.round(now.intensity) : '-';
+    $('mode').textContent = override ? 'simulated' : 'profile';
+
+    let avoided = 0, pend = 0, run = 0, done = 0;
+    $('rows').innerHTML = jobs.map(j => {
+      const saved = j.status === 'DONE' ? j.baseline_gco2 - j.actual_gco2 : null;
+      if (saved != null) avoided += saved;
+      if (j.status === 'PENDING' || j.status === 'QUEUED') pend++;
+      else if (j.status === 'RUNNING') run++;
+      else if (j.status === 'DONE') done++;
+      return `<tr><td>${esc(j.job_id)}</td><td><span class="tag ${esc(j.status)}">${esc(j.status)}</span></td>
+        <td>${Math.round(j.baseline_intensity)}</td><td>${j.release_intensity != null ? Math.round(j.release_intensity) : '-'}</td>
+        <td>${esc(j.release_reason || '-')}</td><td>${g(j.actual_gco2)}</td><td>${g(j.baseline_gco2)}</td><td>${g(saved)}</td></tr>`;
+    }).join('');
+    $('avoided').textContent = avoided.toFixed(4);
+    $('counts').textContent = `${pend} / ${run} / ${done}`;
+  } catch (e) { $('msg').textContent = 'Cannot reach API: ' + e.message; }
+}
+
+setInterval(refresh, 4000);
+refresh();
+</script>
+</body>
+</html>
