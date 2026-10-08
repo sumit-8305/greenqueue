@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euxo pipefail
+dnf install -y docker python3-pip
+systemctl enable --now docker
+pip3 install boto3 psutil
+docker pull python:3.12-alpine
+
+cd /tmp
+curl -sSL https://github.com/prometheus/node_exporter/releases/download/v1.8.2/node_exporter-1.8.2.linux-amd64.tar.gz | tar xz
+cp node_exporter-1.8.2.linux-amd64/node_exporter /usr/local/bin/
+cat > /etc/systemd/system/node_exporter.service <<'EOF'
+[Unit]
+Description=node_exporter
+After=network.target
+[Service]
+ExecStart=/usr/local/bin/node_exporter
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+
+mkdir -p /opt/greenqueue
+cat > /opt/greenqueue/worker.py <<'PYEOF'
+${worker_py}
+PYEOF
+
+cat > /etc/systemd/system/greenqueue-worker.service <<EOF
+[Unit]
+Description=GreenQueue worker
+After=docker.service network-online.target
+[Service]
+Environment=AWS_DEFAULT_REGION=${region}
+Environment=JOBS_TABLE=${jobs_table}
+Environment=GRID_TABLE=${grid_table}
+Environment=QUEUE_URL=${queue_url}
+Environment=ASG_NAME=${asg_name}
+ExecStart=/usr/bin/python3 /opt/greenqueue/worker.py
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now node_exporter greenqueue-worker

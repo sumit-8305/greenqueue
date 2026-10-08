@@ -1,0 +1,76 @@
+{
+  "uid": "greenqueue-overview",
+  "title": "GreenQueue Overview",
+  "tags": ["greenqueue", "carbon-aware"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Jobs by status",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "greenqueue_jobs", "legendFormat": "{{status}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 2,
+      "title": "SQS messages",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "greenqueue_sqs_messages", "legendFormat": "{{state}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 3,
+      "title": "Estimated energy used",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
+      "targets": [{ "expr": "greenqueue_estimated_energy_kwh", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 6 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto" }
+    },
+    {
+      "id": 4,
+      "title": "Estimated emissions by basis",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
+      "targets": [{ "expr": "greenqueue_estimated_emissions_gco2", "legendFormat": "{{basis}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "massg", "decimals": 4, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 5,
+      "title": "Grid carbon intensity (configured/demo value)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "targets": [{ "expr": "greenqueue_grid_carbon_intensity_gco2_per_kwh", "legendFormat": "gCO₂/kWh", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "links": []
+}
