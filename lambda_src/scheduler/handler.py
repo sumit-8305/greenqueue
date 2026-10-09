@@ -10,7 +10,7 @@ grid = ddb.Table(os.environ["GRID_TABLE"])
 QUEUE_URL = os.environ["QUEUE_URL"]
 
 IST = timezone(timedelta(hours=5, minutes=30))
-# Illustrative gCO2/kWh by IST hour (solar dip around midday). Demo values, not measured data.
+# Fallback profile (gCO2/kWh) used ONLY if DynamoDB lacks actual/forecast data for an hour
 PROFILE = [760, 760, 755, 750, 745, 740, 720, 690, 640, 580, 530, 500,
            490, 495, 520, 570, 640, 720, 790, 800, 790, 780, 770, 765]
 CLEAN_THRESHOLD = 560
@@ -26,16 +26,38 @@ def hour_key(dt):
 
 
 def refresh_grid(now):
-    if "Item" in grid.get_item(Key={"hour": hour_key(now)}):
-        return
+    """Backfill missing future hours without overwriting live/forecast data from Ingest Lambda."""
     for i in range(24):
         t = now + timedelta(hours=i)
-        grid.put_item(Item={"hour": hour_key(t), "intensity": Decimal(profile_at(t))})
+        key = hour_key(t)
+        fallback_val = Decimal(str(profile_at(t)))
+        
+        # update_item with if_not_exists ensures ingest Lambda data is preserved
+        grid.update_item(
+            Key={"hour": key},
+            UpdateExpression="SET intensity = if_not_exists(intensity, :f), #s = if_not_exists(#s, :src)",
+            ExpressionAttributeNames={"#s": "source"},
+            ExpressionAttributeValues={
+                ":f": fallback_val,
+                ":src": "fallback_profile"
+            }
+        )
+
+
+def get_hour_intensity(dt):
+    """Fetch intensity for a specific hour from DynamoDB, falling back to PROFILE if missing."""
+    item = grid.get_item(Key={"hour": hour_key(dt)}).get("Item")
+    if item and "intensity" in item:
+        return float(item["intensity"])
+    return float(profile_at(dt))
 
 
 def current_intensity(now):
-    item = grid.get_item(Key={"hour": "OVERRIDE"}).get("Item")
-    return float(item["intensity"]) if item else float(profile_at(now))
+    """Check for manual OVERRIDE first, then read current hour from DynamoDB."""
+    override = grid.get_item(Key={"hour": "OVERRIDE"}).get("Item")
+    if override and "intensity" in override:
+        return float(override["intensity"])
+    return get_hour_intensity(now)
 
 
 def lambda_handler(event, context):
@@ -53,7 +75,14 @@ def lambda_handler(event, context):
             reason = "deadline"
         else:
             hours_left = min(24, int((latest_start - now).total_seconds() // 3600))
-            best_future = min(profile_at(now + timedelta(hours=h)) for h in range(hours_left + 1))
+            
+            # Read real values/forecasts from DynamoDB for future decision windows
+            future_intensities = [
+                get_hour_intensity(now + timedelta(hours=h))
+                for h in range(hours_left + 1)
+            ]
+            best_future = min(future_intensities) if future_intensities else current
+
             if current <= CLEAN_THRESHOLD:
                 reason = "clean grid"
             elif current <= best_future * 1.05:

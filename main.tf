@@ -16,6 +16,8 @@ module "lambdas" {
   jobs_table_name = module.database.jobs_table_name
   grid_table_name = module.database.grid_table_name
   queue_url       = module.queue.queue_url
+  em_api_key         = var.em_api_key
+  em_zone            = var.em_zone
 }
 
 output "api_url" {
