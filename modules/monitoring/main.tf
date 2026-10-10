@@ -34,13 +34,13 @@ resource "aws_instance" "prometheus" {
   vpc_security_group_ids      = [aws_security_group.monitoring.id]
   iam_instance_profile        = var.instance_profile_name
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    exporter_py    = file("${path.module}/dynamodb_exporter.py")
-    grafana_setup  = file("${path.module}/grafana_setup.sh")
-    dashboard_json = file("${path.module}/greenqueue-dashboard.json")
-    region         = var.region
-    jobs_table     = var.jobs_table_name
-    grid_table     = var.grid_table_name
-    queue_url      = var.queue_url
+    exporter_py             = file("${path.module}/dynamodb_exporter.py")
+    grafana_setup           = file("${path.module}/grafana_setup.sh")
+    dashboard_json_gzip_b64 = base64gzip(file("${path.module}/greenqueue-dashboard.json"))
+    region                  = var.region
+    jobs_table              = var.jobs_table_name
+    grid_table              = var.grid_table_name
+    queue_url               = var.queue_url
   })
   user_data_replace_on_change = false
 

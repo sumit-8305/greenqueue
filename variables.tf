@@ -7,9 +7,9 @@ variable "environment" {
   type    = string
   default = "hackathon"
 }
-variable "em_api_key" {
-  type      = string
-  sensitive = true
+variable "em_api_key_parameter_name" {
+  type    = string
+  default = "/greenqueue/electricitymaps/api-key"
 }
 
 variable "em_zone" {

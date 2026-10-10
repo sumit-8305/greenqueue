@@ -93,7 +93,7 @@ data "archive_file" "ingest" {
 
 resource "aws_lambda_function" "ingest" {
   function_name    = "greenqueue-ingest"
-  role             = var.lambda_role_arn
+  role             = var.ingest_lambda_role_arn
   runtime          = "python3.12"
   handler          = "handler.lambda_handler"
   filename         = data.archive_file.ingest.output_path
@@ -102,9 +102,9 @@ resource "aws_lambda_function" "ingest" {
 
   environment {
     variables = {
-      GRID_TABLE = var.grid_table_name
-      EM_ZONE    = var.em_zone
-      EM_API_KEY = var.em_api_key
+      GRID_TABLE                = var.grid_table_name
+      EM_ZONE                   = var.em_zone
+      EM_API_KEY_PARAMETER_NAME = var.em_api_key_parameter_name
     }
   }
 }

@@ -2,7 +2,7 @@ import logging
 import os
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import boto3
 from prometheus_client import Counter, Gauge, start_http_server
@@ -35,6 +35,11 @@ emissions_gco2 = Gauge(
 grid_intensity = Gauge(
     "greenqueue_grid_carbon_intensity_gco2_per_kwh",
     "Current configured grid intensity (demo profile or override)",
+)
+grid_forecast = Gauge(
+    "greenqueue_grid_intensity_forecast_gco2_per_kwh",
+    "Current and forecast grid intensity by UTC hour from DynamoDB",
+    ["hour", "source"],
 )
 queue_messages = Gauge(
     "greenqueue_sqs_messages",
@@ -75,6 +80,42 @@ def read_current_intensity():
     return float(item["intensity"]) if item else float("nan")
 
 
+def refresh_grid_forecast():
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    end = now + timedelta(hours=24)
+    scan_args = {
+        "ProjectionExpression": "#h, intensity, #s",
+        "ExpressionAttributeNames": {"#h": "hour", "#s": "source"},
+    }
+    items = []
+    while True:
+        response = grid_table.scan(**scan_args)
+        items.extend(response.get("Items", []))
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        scan_args = {
+            "ProjectionExpression": "#h, intensity, #s",
+            "ExpressionAttributeNames": {"#h": "hour", "#s": "source"},
+            "ExclusiveStartKey": last_key,
+        }
+
+    grid_forecast.clear()
+    for item in items:
+        hour = item.get("hour")
+        if not hour or hour == "OVERRIDE" or "intensity" not in item:
+            continue
+        try:
+            hour_dt = datetime.strptime(hour, "%Y-%m-%dT%H:%MZ").replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if now <= hour_dt <= end:
+            grid_forecast.labels(
+                hour=hour,
+                source=str(item.get("source", "unknown")),
+            ).set(float(item["intensity"]))
+
+
 def refresh_metrics():
     items = scan_all_jobs()
     counts = dict.fromkeys(STATUSES, 0)
@@ -98,6 +139,7 @@ def refresh_metrics():
     emissions_gco2.labels(basis="completion_intensity_estimate").set(actual_gco2)
     emissions_gco2.labels(basis="submission_baseline").set(baseline_gco2)
     grid_intensity.set(read_current_intensity())
+    refresh_grid_forecast()
 
     attributes = sqs.get_queue_attributes(
         QueueUrl=QUEUE_URL,

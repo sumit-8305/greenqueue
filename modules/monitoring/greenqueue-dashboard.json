@@ -2,61 +2,125 @@
   "uid": "greenqueue-overview",
   "title": "GreenQueue Overview",
   "tags": ["greenqueue", "carbon-aware"],
+  "description": "Operational and carbon-intensity view for GreenQueue. Energy and CO₂ figures are model-based estimates, not direct measurements. Forecast values are read from the Grid DynamoDB table.",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
     {
-      "id": 1,
-      "title": "Jobs by status",
-      "type": "timeseries",
+      "id": 1, "title": "Completed jobs", "type": "stat",
       "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "targets": [{ "expr": "greenqueue_jobs", "legendFormat": "{{status}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_jobs{status=\"DONE\"})", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
     },
     {
-      "id": 2,
-      "title": "SQS messages",
-      "type": "timeseries",
+      "id": 2, "title": "Pending / queued", "type": "stat",
       "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "greenqueue_sqs_messages", "legendFormat": "{{state}}", "refId": "A" }],
-      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
-      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_jobs{status=\"PENDING\"}) + sum(greenqueue_jobs{status=\"QUEUED\"})", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
     },
     {
-      "id": 3,
-      "title": "Estimated energy used",
-      "type": "stat",
+      "id": 3, "title": "Running jobs", "type": "stat",
       "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 8 },
-      "targets": [{ "expr": "greenqueue_estimated_energy_kwh", "refId": "A" }],
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_jobs{status=\"RUNNING\"})", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
+    },
+    {
+      "id": 4, "title": "SQS backlog", "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_sqs_messages)", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 10 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
+    },
+    {
+      "id": 5, "title": "Estimated energy", "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_estimated_energy_kwh)", "instant": true, "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "kwatth", "decimals": 6 }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto" }
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
     },
     {
-      "id": 4,
-      "title": "Estimated emissions by basis",
-      "type": "timeseries",
+      "id": 6, "title": "Estimated emissions", "type": "stat",
       "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
-      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 8 },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "targets": [{ "expr": "sum(greenqueue_estimated_emissions_gco2{basis=\"completion_intensity_estimate\"})", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "massg", "decimals": 4 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
+    },
+    {
+      "id": 7, "title": "Grid intensity — current and next 24h (UTC)", "type": "table",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 5 },
+      "targets": [{ "expr": "greenqueue_grid_intensity_forecast_gco2_per_kwh", "format": "table", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 1 }, "overrides": [] },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false, "reducer": ["sum"], "countRows": false } }
+    },
+    {
+      "id": 8, "title": "Job lifecycle", "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 5 },
+      "targets": [{ "expr": "greenqueue_jobs", "legendFormat": "{{status}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 12, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 9, "title": "Queue depth", "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 15 },
+      "targets": [{ "expr": "greenqueue_sqs_messages", "legendFormat": "{{state}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "fillOpacity": 15, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 10, "title": "Estimated emissions vs submission baseline", "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 15 },
       "targets": [{ "expr": "greenqueue_estimated_emissions_gco2", "legendFormat": "{{basis}}", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "massg", "decimals": 4, "color": { "mode": "palette-classic" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
     },
     {
-      "id": 5,
-      "title": "Grid carbon intensity (configured/demo value)",
-      "type": "timeseries",
+      "id": 11, "title": "Current grid intensity history", "type": "timeseries",
       "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
-      "targets": [{ "expr": "greenqueue_grid_carbon_intensity_gco2_per_kwh", "legendFormat": "gCO₂/kWh", "refId": "A" }],
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 15 },
+      "targets": [{ "expr": "greenqueue_grid_carbon_intensity_gco2_per_kwh", "legendFormat": "Current gCO₂/kWh", "refId": "A" }],
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 1, "color": { "mode": "palette-classic" } }, "overrides": [] },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    },
+    {
+      "id": 12, "title": "Estimated difference vs submit-time baseline", "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "description": "Baseline estimate minus completion-intensity estimate. Positive is lower estimated emissions; negative is higher. This is model-based, not measured savings.",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 23 },
+      "targets": [{ "expr": "sum(greenqueue_estimated_emissions_gco2{basis=\"submission_baseline\"}) - sum(greenqueue_estimated_emissions_gco2{basis=\"completion_intensity_estimate\"})", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "massg", "decimals": 4, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "area", "justifyMode": "center" }
+    },
+    {
+      "id": 13, "title": "Exporter scrape health", "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 23 },
+      "targets": [{ "expr": "up{job=\"greenqueue-dynamodb\"}", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short", "mappings": [{ "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } }] }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
+    },
+    {
+      "id": 14, "title": "Exporter data age", "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "greenqueue-prometheus" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 23 },
+      "targets": [{ "expr": "time() - greenqueue_exporter_last_refresh_timestamp_seconds", "instant": true, "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 60 }, { "color": "red", "value": 180 }] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "auto", "textMode": "value", "colorMode": "value", "graphMode": "none", "justifyMode": "center" }
     }
   ],
   "annotations": {

@@ -11,9 +11,7 @@ cat > /opt/greenqueue/grafana_setup.sh <<'GRAFANA_SETUP_EOF'
 ${grafana_setup}
 GRAFANA_SETUP_EOF
 chmod 0755 /opt/greenqueue/grafana_setup.sh
-cat > /opt/greenqueue/greenqueue-dashboard.json <<'DASHBOARD_SOURCE_EOF'
-${dashboard_json}
-DASHBOARD_SOURCE_EOF
+printf '%s' '${dashboard_json_gzip_b64}' | base64 -d | gzip -d > /opt/greenqueue/greenqueue-dashboard.json
 
 cat > /opt/greenqueue/dynamodb_exporter.py <<'PYEOF'
 ${exporter_py}

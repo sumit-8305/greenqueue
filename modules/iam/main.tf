@@ -36,6 +36,43 @@ resource "aws_iam_role_policy" "lambda" {
   })
 }
 
+resource "aws_iam_role" "ingest_lambda" {
+  name = "greenqueue-ingest-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ingest_lambda_logs" {
+  role       = aws_iam_role.ingest_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy" "ingest_access" {
+  name = "greenqueue-ingest-access"
+  role = aws_iam_role.ingest_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = var.em_api_key_parameter_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:UpdateItem"]
+        Resource = var.grid_table_arn
+      }
+    ]
+  })
+}
+
 # ---------- Worker role (ASG instances) ----------
 resource "aws_iam_role" "worker" {
   name = "greenqueue-worker-role"

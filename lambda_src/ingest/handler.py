@@ -1,19 +1,32 @@
-import json, os, urllib.parse, urllib.request
+import json, os, urllib.error, urllib.parse, urllib.request
 from datetime import datetime, timezone
 from decimal import Decimal
 import boto3
+from botocore.config import Config
 
-grid = boto3.resource("dynamodb").Table(os.environ["GRID_TABLE"])
+AWS_CONFIG = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2})
+grid = boto3.resource("dynamodb", config=AWS_CONFIG).Table(os.environ["GRID_TABLE"])
 ZONE = os.environ["EM_ZONE"]
-KEY = os.environ["EM_API_KEY"]
+API_KEY_PARAMETER_NAME = os.environ["EM_API_KEY_PARAMETER_NAME"]
+ssm = boto3.client("ssm", config=AWS_CONFIG)
 BASE = "https://api.electricitymaps.com/v3/carbon-intensity/"
 
 
-def fetch(endpoint):
+def fetch(endpoint, api_key):
     url = BASE + endpoint + "?" + urllib.parse.urlencode({"zone": ZONE})
-    req = urllib.request.Request(url, headers={"auth-token": KEY})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        return json.load(r)
+    req = urllib.request.Request(url, headers={"auth-token": api_key})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise RuntimeError(
+                f"Electricity Maps rejected the API credential (HTTP {exc.code}); "
+                "verify the token is current and authorized for this zone."
+            ) from None
+        if exc.code == 429:
+            raise RuntimeError("Electricity Maps rate limit reached (HTTP 429).") from None
+        raise
 
 
 def hour_key(iso):
@@ -24,8 +37,9 @@ def hour_key(iso):
 def lambda_handler(event, context):
     now_key = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00Z")
     result = {}
+    api_key = ssm.get_parameter(Name=API_KEY_PARAMETER_NAME, WithDecryption=True)["Parameter"]["Value"]
 
-    latest = fetch("latest")
+    latest = fetch("latest", api_key)
     ci = latest.get("carbonIntensity")
     if ci is not None:
         grid.update_item(
@@ -39,7 +53,7 @@ def lambda_handler(event, context):
 
     try:
         written = 0
-        for p in fetch("forecast").get("forecast", []):
+        for p in fetch("forecast", api_key).get("forecast", []):
             key = hour_key(p["datetime"])
             if key <= now_key or p.get("carbonIntensity") is None:
                 continue  # only future hours, so the forecast stays frozen once the hour starts
