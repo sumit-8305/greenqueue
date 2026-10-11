@@ -49,3 +49,15 @@ module "monitoring" {
 output "monitoring_instance_id" {
   value = module.monitoring.instance_id
 }
+
+module "frontend" {
+  source      = "./modules/frontend"
+  bucket_name = "greenqueue-frontend-${data.aws_caller_identity.current.account_id}"
+  index_html  = file("${path.root}/frontend/index.html")
+  config_js   = templatefile("${path.root}/frontend/config.js.tftpl", { api_url = module.lambdas.api_url })
+}
+
+output "frontend_url" {
+  description = "Public S3 static website URL for GreenQueue frontend"
+  value       = module.frontend.website_url
+}

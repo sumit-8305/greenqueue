@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 AWS_CONFIG = Config(connect_timeout=3, read_timeout=5, retries={"max_attempts": 2})
 grid = boto3.resource("dynamodb", config=AWS_CONFIG).Table(os.environ["GRID_TABLE"])
@@ -57,12 +58,26 @@ def lambda_handler(event, context):
             key = hour_key(p["datetime"])
             if key <= now_key or p.get("carbonIntensity") is None:
                 continue  # only future hours, so the forecast stays frozen once the hour starts
+            value = Decimal(str(p["carbonIntensity"]))
+            # Always store the latest forecast without requiring DynamoDB GetItem.
             grid.update_item(
                 Key={"hour": key},
-                UpdateExpression="SET forecast=:f, intensity=if_not_exists(actual, :f), #s=if_not_exists(#s, :src)",
-                ExpressionAttributeNames={"#s": "source"},
-                ExpressionAttributeValues={":f": Decimal(str(p["carbonIntensity"])), ":src": "forecast"},
+                UpdateExpression="SET forecast=:f",
+                ExpressionAttributeValues={":f": value},
             )
+            try:
+                # Replace stale fallback values/labels only when no actual exists.
+                grid.update_item(
+                    Key={"hour": key},
+                    UpdateExpression="SET forecast=:f, intensity=:f, #s=:src",
+                    ConditionExpression="attribute_not_exists(actual)",
+                    ExpressionAttributeNames={"#s": "source"},
+                    ExpressionAttributeValues={":f": value, ":src": "forecast"},
+                )
+            except ClientError as exc:
+                if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+                    raise
+                # An actual reading already exists: leave its intensity/source untouched.
             written += 1
         result["forecast_hours"] = written
     except Exception as e:

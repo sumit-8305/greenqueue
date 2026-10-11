@@ -51,7 +51,7 @@
   }
   input:focus, button:focus { outline: 1px solid var(--accent); }
   input { width: 100px; }
-  #api { width: 100%; font-family: monospace; }
+  #connection { color: var(--mut); font-size: 12px; }
   button { cursor: pointer; background: #1b3827; transition: background 0.15s ease; font-weight: 500; }
   button:hover { background: #254d35; }
   .dirty { background: #4a1f1f; color: #fca5a5; } .dirty:hover { background: #612525; }
@@ -74,9 +74,7 @@
 <h1>GreenQueue</h1>
 <div class="sub">Carbon-aware job scheduler — shifts compute workloads to low-carbon grid windows.</div>
 
-<div class="card">
-  <input id="api" placeholder="Paste API Gateway URL (e.g. https://xyz.execute-api.ap-south-1.amazonaws.com/)">
-</div>
+<div class="sub" id="connection">Connecting to GreenQueue API…</div>
 
 <div class="card row">
   <div class="stat"><b id="intensity">-</b><span>Intensity (gCO₂/kWh)</span></div>
@@ -134,17 +132,11 @@
   </table>
 </div>
 
+<script src="config.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let API = localStorage.getItem('gq_api') || '';
-$('api').value = API;
-$('api').onchange = e => {
-  API = e.target.value.trim();
-  if (API && !API.endsWith('/')) API += '/';
-  localStorage.setItem('gq_api', API);
-  refresh();
-};
+const API = window.GREENQUEUE_API_URL || '';
 
 let chartInstance = null;
 
@@ -227,15 +219,20 @@ function updateChart(grid) {
 }
 
 async function refresh() {
-  if (!API) return;
+  if (!API) {
+    $('connection').textContent = 'API endpoint was not configured. Redeploy the frontend with Terraform.';
+    return;
+  }
   try {
     const [jobs, grid] = await Promise.all([call('jobs'), call('grid')]);
+    $('connection').textContent = 'Connected to GreenQueue API';
     const override = grid.find(r => r.hour === 'OVERRIDE');
     const hourKey = new Date().toISOString().slice(0, 13) + ':00Z';
     const now = override || grid.find(r => r.hour === hourKey);
     
     $('intensity').textContent = now ? Math.round(now.intensity) : '-';
-    $('mode').textContent = override ? 'simulated' : (now?.source || 'live/profile');
+    const source = now?.actual != null ? 'live' : now?.forecast != null ? 'forecast' : (now?.source || 'unknown');
+    $('mode').textContent = override ? 'simulated' : source;
 
     updateChart(grid);
 
@@ -262,7 +259,7 @@ async function refresh() {
 
     $('avoided').textContent = avoided.toFixed(4);$('counts').textContent = `${pend} / ${run} / ${done}`;
   } catch (e) { 
-    $('msg').textContent = 'API Error: ' + e.message; 
+    $('connection').textContent = 'Cannot reach GreenQueue API: ' + e.message;
   }
 }
 
